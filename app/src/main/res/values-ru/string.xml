@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Погода</string>
+    <string name="city">Город</string>
+    <string name="city_hint">Выберите город</string>
+    <string name="temperature">Температура</string>
+    <string name="cloudiness">Облачность</string>
+    <string name="pressure">Давление</string>
+    <string name="humidity">Влажность</string>
+    <string name="wind_speed">Скорость ветра</string>
+    <string name="OK">OK</string>
+    <string name="enter_city">Введите название города</string>
+    <string name="settings">Настройки</string>
+    <string name="settings_style">Темный/светлый стиль</string>
+    <string name="settings_language">Выберите язык</string>
+
+    <string name="error_fail_connection">Ошибка подключения</string>
+    <string name="error_city_not_found">Такого города нет</string>
+</resources>
