@@ -29,4 +29,7 @@
     <string name="menu_slideshow">Slideshow</string>
     <string name="nav_about_dev">О разработчике</string>
     <string name="nav_feedback">Обратная связь</string>
+    <string name="menu_sensors">Сенсоры</string>
+    <string name="sensor_temperature_text">Temperature Sensor value = </string>
+    <string name="sensor_humidity_text">Humidity Sensor value = </string>
 </resources>

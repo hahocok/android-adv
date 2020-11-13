@@ -64,6 +64,7 @@ public class SelectCityFragment extends Fragment implements Constants {
                         getFragmentManager().
                                 beginTransaction()
                                 .replace(R.id.fragment_container, fragment)
+                                .addToBackStack("")
                                 .commit();
                     }
                 }).show();

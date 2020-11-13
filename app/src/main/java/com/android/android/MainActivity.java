@@ -20,6 +20,7 @@ import androidx.navigation.ui.NavigationUI;
 public class MainActivity extends BaseActivity {
 
     private static final int SETTING_CODE = 88;
+    private AppBarConfiguration mAppBarConfiguration;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -40,16 +41,33 @@ public class MainActivity extends BaseActivity {
     }
 
     private void createNavMenu() {
-        DrawerLayout drawer = findViewById(R.id.drawer_layout);
-        NavigationView navigationView = findViewById(R.id.nav_view);
+        final DrawerLayout drawer = findViewById(R.id.drawer_layout);
+        final NavigationView navigationView = findViewById(R.id.nav_view);
 
-        AppBarConfiguration mAppBarConfiguration = new AppBarConfiguration.Builder(
+        mAppBarConfiguration = new AppBarConfiguration.Builder(R.id.nav_sensors,
                 R.id.nav_about_dev, R.id.nav_feedback)
-                .setDrawerLayout(drawer)
+                .setOpenableLayout(drawer)
                 .build();
-        NavController navController = Navigation.findNavController(this, R.id.nav_host_fragment);
+        final NavController navController = Navigation.findNavController(this, R.id.nav_host_fragment);
         NavigationUI.setupActionBarWithNavController(this, navController, mAppBarConfiguration);
         NavigationUI.setupWithNavController(navigationView, navController);
+
+        navigationView.setNavigationItemSelectedListener(new NavigationView.OnNavigationItemSelectedListener() {
+            @Override
+            public boolean onNavigationItemSelected(@NonNull MenuItem item) {
+                int id = item.getItemId();
+                if (id==R.id.nav_sensors) {
+                    getSupportFragmentManager()
+                            .beginTransaction()
+                            .add(R.id.fragment_container, new SensorsFragment())
+                            .addToBackStack("")
+                            .commit();
+                }
+                NavigationUI.onNavDestinationSelected(item, navController);
+                drawer.closeDrawer(GravityCompat.START);
+                return true;
+            }
+        });
     }
 
     @Override
@@ -85,5 +103,12 @@ public class MainActivity extends BaseActivity {
         if (requestCode == SETTING_CODE){
             recreate();
         }
+    }
+
+    @Override
+    public boolean onSupportNavigateUp() {
+        final NavController navController = Navigation.findNavController(this, R.id.nav_host_fragment);
+        return NavigationUI.navigateUp(navController, mAppBarConfiguration)
+                || super.onSupportNavigateUp();
     }
 }

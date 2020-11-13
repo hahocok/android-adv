@@ -13,6 +13,7 @@ import android.widget.Toast;
 
 import com.android.android.cards.SocSource;
 import com.android.android.model.WeatherRequest;
+import com.google.android.material.button.MaterialButton;
 import com.google.android.material.snackbar.Snackbar;
 import com.google.gson.Gson;
 
@@ -73,6 +74,7 @@ public class MainActivityFragment extends Fragment implements Constants {
                 getFragmentManager().
                         beginTransaction()
                         .replace(R.id.fragment_container, selectCityFragment)
+                        .addToBackStack("")
                         .commit();
 
             }
@@ -98,6 +100,18 @@ public class MainActivityFragment extends Fragment implements Constants {
         mainPressure = view.findViewById(R.id.main_pressure);
         mainHumidity = view.findViewById(R.id.main_humidity);
         mainWindSpeed = view.findViewById(R.id.main_wind_speed);
+
+        MaterialButton btn = view.findViewById(R.id.btn_sensors);
+        btn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                getFragmentManager().
+                        beginTransaction()
+                        .replace(R.id.fragment_container, new SensorsFragment())
+                        .addToBackStack("")
+                        .commit();
+            }
+        });
     }
 
     private void getWeather() {
