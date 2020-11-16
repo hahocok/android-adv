@@ -13,8 +13,6 @@ import android.widget.EditText;
 
 import com.google.android.material.snackbar.Snackbar;
 
-import java.util.Random;
-
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
@@ -49,13 +47,9 @@ public class SelectCityFragment extends Fragment implements Constants {
                 String city = etSelectCity.getText().toString();
                 boolean isHumidity = cbHumidity.isChecked();
 
-                presenter.setTemperature(getRandomTemp());
-
-                final MainActivityFragment fragment = new MainActivityFragment();
-                Bundle bundle = new Bundle();
-                bundle.putString(CITY, city);
-                bundle.putBoolean(HUMIDITY, isHumidity);
-                fragment.setArguments(bundle);
+                presenter.setCity(city);
+                presenter.setRandomTemperature();
+                presenter.setHumidity(isHumidity);
 
                 Snackbar.make(v, "Применить изменения?", Snackbar.LENGTH_LONG).setAction("ОК", new View.OnClickListener() {
                     @Override
@@ -63,7 +57,8 @@ public class SelectCityFragment extends Fragment implements Constants {
                         hideKeyboard(getContext(), view);
                         getFragmentManager().
                                 beginTransaction()
-                                .replace(R.id.fragment_container, fragment)
+                                .replace(R.id.fragment_container, new MainActivityFragment())
+                                .addToBackStack("")
                                 .commit();
                     }
                 }).show();
@@ -78,20 +73,10 @@ public class SelectCityFragment extends Fragment implements Constants {
         imm.hideSoftInputFromWindow(view.getWindowToken(), 0);
     }
 
-    private String getRandomTemp() {
-        int min = -30;
-        int max = 30;
-        int diff = max - min;
-        Random random = new Random();
-        int i = random.nextInt(diff + 1);
-        i += min;
-        return String.valueOf(i);
-    }
-
     @Override
     public void onSaveInstanceState(@NonNull Bundle outState) {
-        outState.putString(CITY, etSelectCity.getText().toString());
-        outState.putBoolean(HUMIDITY, cbHumidity.isChecked());
+        presenter.setCity(etSelectCity.getText().toString());
+        presenter.setHumidity(cbHumidity.isChecked());
         super.onSaveInstanceState(outState);
     }
 
@@ -103,13 +88,8 @@ public class SelectCityFragment extends Fragment implements Constants {
     }
 
     private void readIntent() {
-        Bundle args = getArguments();
-        String city = null;
-        boolean isHumidity = false;
-        if (args != null) {
-            city = args.getString(CITY);
-            isHumidity = args.getBoolean(HUMIDITY, false);
-        }
+        String city = presenter.getCity();
+        boolean isHumidity = presenter.isHumidity();
 
         if (city != null && city.equals(getResources().getString(R.string.city))) {
             etSelectCity.setHint(getResources().getString(R.string.enter_city));
