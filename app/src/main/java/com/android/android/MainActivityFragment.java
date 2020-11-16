@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.Gravity;
@@ -87,6 +88,21 @@ public class MainActivityFragment extends Fragment implements Constants {
         return view;
     }
 
+    private void saveToPreference(SharedPreferences preferences) {
+        SharedPreferences.Editor editor = preferences.edit();
+
+        String city = presenter.getCity();
+        editor.putString(CITY, city);
+        editor.apply();
+    }
+
+    private void readFromPreference(SharedPreferences preferences) {
+        String city = preferences.getString(CITY, "");
+        presenter.setCity(city);
+        mainCity.setText(city);
+        getWeather();
+    }
+
     private void initViews(View view) {
         mainCityContainer = view.findViewById(R.id.main_city_container);
         mainHumidityContainer = view.findViewById(R.id.main_humidity_container);
@@ -108,6 +124,8 @@ public class MainActivityFragment extends Fragment implements Constants {
                         .commit();
             }
         });
+
+        readFromPreference(getActivity().getPreferences(Context.MODE_PRIVATE));
     }
 
     private void getWeather() {

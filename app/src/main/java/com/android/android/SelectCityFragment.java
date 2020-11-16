@@ -2,6 +2,7 @@ package com.android.android;
 
 import android.app.Activity;
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -51,6 +52,8 @@ public class SelectCityFragment extends Fragment implements Constants {
                 presenter.setRandomTemperature();
                 presenter.setHumidity(isHumidity);
 
+                saveToPreference(getActivity().getPreferences(Context.MODE_PRIVATE));
+
                 Snackbar.make(v, "Применить изменения?", Snackbar.LENGTH_LONG).setAction("ОК", new View.OnClickListener() {
                     @Override
                     public void onClick(View v) {
@@ -66,6 +69,14 @@ public class SelectCityFragment extends Fragment implements Constants {
         });
 
         readIntent();
+    }
+
+    private void saveToPreference(SharedPreferences preferences) {
+        SharedPreferences.Editor editor = preferences.edit();
+
+        String city = presenter.getCity();
+        editor.putString(CITY, city);
+        editor.apply();
     }
 
     public static void hideKeyboard(Context context, View view) {
