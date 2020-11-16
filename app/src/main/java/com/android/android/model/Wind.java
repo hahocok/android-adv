@@ -1,7 +1,9 @@
 package com.android.android.model;
 
-public class Wind {
-    private int speed;
+import java.io.Serializable;
+
+public class Wind implements Serializable {
+    private float speed;
     private int deg;
 
     public int getDeg() {
@@ -12,7 +14,7 @@ public class Wind {
         this.deg = deg;
     }
 
-    public int getSpeed() {
+    public float getSpeed() {
         return speed;
     }
 
