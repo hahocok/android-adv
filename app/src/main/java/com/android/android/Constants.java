@@ -13,4 +13,6 @@ public interface Constants {
     final String CITY = "CITY";
     final String CLOUDINESS = "CLOUDINESS";
     final String HUMIDITY = "HUMIDITY";
+
+    final float ABSOLUTE_ZERO = -273.15f;
 }

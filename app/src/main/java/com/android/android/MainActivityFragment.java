@@ -25,6 +25,11 @@ import androidx.fragment.app.Fragment;
 import androidx.recyclerview.widget.DividerItemDecoration;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
+import retrofit2.Call;
+import retrofit2.Callback;
+import retrofit2.Response;
+import retrofit2.Retrofit;
+import retrofit2.converter.gson.GsonConverterFactory;
 
 public class MainActivityFragment extends Fragment implements Constants {
 
@@ -39,19 +44,7 @@ public class MainActivityFragment extends Fragment implements Constants {
     private TextView mainHumidity;
     private TextView mainWindSpeed;
 
-    private ServiceFinishedReceiver serviceFinishedReceiver = new ServiceFinishedReceiver();
-
-    private class ServiceFinishedReceiver extends BroadcastReceiver {
-        @Override
-        public void onReceive(Context context, final Intent intent) {
-            getActivity().runOnUiThread(new Runnable() {
-                @Override
-                public void run() {
-                    displayWeather(intent);
-                }
-            });
-        }
-    }
+    private GetWeather getWeather;
 
     @Nullable
     @Override
@@ -60,6 +53,7 @@ public class MainActivityFragment extends Fragment implements Constants {
 
         presenter = MainPresenter.getInstance();
 
+        initRetrofit();
         initViews(view);
 
         mainCityContainer.setOnClickListener(new View.OnClickListener() {
@@ -88,19 +82,37 @@ public class MainActivityFragment extends Fragment implements Constants {
         return view;
     }
 
-    private void saveToPreference(SharedPreferences preferences) {
-        SharedPreferences.Editor editor = preferences.edit();
-
-        String city = presenter.getCity();
-        editor.putString(CITY, city);
-        editor.apply();
-    }
-
     private void readFromPreference(SharedPreferences preferences) {
         String city = preferences.getString(CITY, "");
         presenter.setCity(city);
         mainCity.setText(city);
         getWeather();
+    }
+
+    private void initRetrofit() {
+        Retrofit retrofit;
+        retrofit = new Retrofit.Builder()
+                .baseUrl("https://api.openweathermap.org")
+                .addConverterFactory(GsonConverterFactory.create())
+                .build();
+        getWeather = retrofit.create(GetWeather.class);
+    }
+
+    private void requestRetrofit(String city, String keyApi) {
+        getWeather.loadWeather(city, keyApi)
+                .enqueue(new Callback<WeatherRequest>() {
+                    @Override
+                    public void onResponse(Call<WeatherRequest> call, Response<WeatherRequest> response) {
+                        if (response.body() != null) {
+                            displayWeather(response.body());
+                        }
+                    }
+
+                    @Override
+                    public void onFailure(Call<WeatherRequest> call, Throwable t) {
+                        Log.e(TAG, "onFailure error : " + t.getMessage());
+                    }
+                });
     }
 
     private void initViews(View view) {
@@ -129,11 +141,10 @@ public class MainActivityFragment extends Fragment implements Constants {
     }
 
     private void getWeather() {
-        ServiceReadWeather.startService(getContext(), presenter.getCity());
+        requestRetrofit(presenter.getCity(), WEATHER_API_KEY);
     }
 
-    private void displayWeather(Intent intent){
-        final WeatherRequest weatherRequest = (WeatherRequest) intent.getSerializableExtra(INTENT_RESPONSE);
+    private void displayWeather(WeatherRequest weatherRequest){
         if (weatherRequest != null) {
             mainCity.setText(weatherRequest.getName());
             mainTemperature.setText(String.format("%f2", weatherRequest.getMain().getTemp()));
@@ -185,18 +196,6 @@ public class MainActivityFragment extends Fragment implements Constants {
         }
 
 
-    }
-
-    @Override
-    public void onStart() {
-        super.onStart();
-        getActivity().registerReceiver(serviceFinishedReceiver, new IntentFilter(BROADCAST_RESPONSE_WEATHER));
-    }
-
-    @Override
-    public void onStop() {
-        getActivity().unregisterReceiver(serviceFinishedReceiver);
-        super.onStop();
     }
 
     @Override
