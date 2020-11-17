@@ -1,10 +1,8 @@
 package com.android.android;
 
-import android.content.BroadcastReceiver;
 import android.content.Context;
-import android.content.Intent;
-import android.content.IntentFilter;
 import android.content.SharedPreferences;
+import android.database.sqlite.SQLiteDatabase;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.Gravity;
@@ -15,9 +13,13 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import com.android.android.cards.SocSource;
+import com.android.android.database.DBHelper;
+import com.android.android.database.WeatherTable;
 import com.android.android.model.WeatherRequest;
-import com.android.android.services.ServiceReadWeather;
 import com.google.android.material.button.MaterialButton;
+import com.google.gson.Gson;
+
+import java.util.List;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -45,6 +47,7 @@ public class MainActivityFragment extends Fragment implements Constants {
     private TextView mainWindSpeed;
 
     private GetWeather getWeather;
+    private SQLiteDatabase database;
 
     @Nullable
     @Override
@@ -53,6 +56,7 @@ public class MainActivityFragment extends Fragment implements Constants {
 
         presenter = MainPresenter.getInstance();
 
+        initDB();
         initRetrofit();
         initViews(view);
 
@@ -104,7 +108,9 @@ public class MainActivityFragment extends Fragment implements Constants {
                     @Override
                     public void onResponse(Call<WeatherRequest> call, Response<WeatherRequest> response) {
                         if (response.body() != null) {
-                            displayWeather(response.body());
+                            WeatherRequest wr = response.body();
+                            saveDataToDB(wr);
+                            displayWeather(wr);
                         }
                     }
 
@@ -113,6 +119,24 @@ public class MainActivityFragment extends Fragment implements Constants {
                         Log.e(TAG, "onFailure error : " + t.getMessage());
                     }
                 });
+    }
+
+    private void saveDataToDB(WeatherRequest weatherRequest) {
+        String city = weatherRequest.getName();
+        String data = new Gson().toJson(weatherRequest, WeatherRequest.class);
+        List<String> dataFromDB = WeatherTable.getDataFromCity(city, database);
+
+        if (dataFromDB.isEmpty()) {
+            WeatherTable.addData(city, data, database);
+        } else {
+            WeatherTable.editData(city, data, database);
+        }
+
+        WeatherTable.addData(weatherRequest.getName(), data, database);
+    }
+
+    private void initDB() {
+        database = new DBHelper(getContext()).getWritableDatabase();
     }
 
     private void initViews(View view) {
