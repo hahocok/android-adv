@@ -15,4 +15,6 @@ public interface Constants {
     final String HUMIDITY = "HUMIDITY";
 
     final float ABSOLUTE_ZERO = -273.15f;
+
+    final int PERMISSION_REQUEST_CODE = 10;
 }

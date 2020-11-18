@@ -1,8 +1,14 @@
 package com.android.android;
 
+import android.Manifest;
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
 import android.database.sqlite.SQLiteDatabase;
+import android.location.Criteria;
+import android.location.Location;
+import android.location.LocationListener;
+import android.location.LocationManager;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.Gravity;
@@ -20,9 +26,11 @@ import com.google.android.material.button.MaterialButton;
 import com.google.gson.Gson;
 
 import java.util.List;
+import java.util.Locale;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.core.app.ActivityCompat;
 import androidx.fragment.app.Fragment;
 import androidx.recyclerview.widget.DividerItemDecoration;
 import androidx.recyclerview.widget.LinearLayoutManager;
@@ -32,6 +40,8 @@ import retrofit2.Callback;
 import retrofit2.Response;
 import retrofit2.Retrofit;
 import retrofit2.converter.gson.GsonConverterFactory;
+
+import static android.content.Context.LOCATION_SERVICE;
 
 public class MainActivityFragment extends Fragment implements Constants {
 
@@ -86,6 +96,69 @@ public class MainActivityFragment extends Fragment implements Constants {
         return view;
     }
 
+    private void requestPermissions() {
+        if (ActivityCompat.checkSelfPermission(getContext(), Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                || ActivityCompat.checkSelfPermission(getContext(), Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+            requestLocation();
+        } else {
+            requestLocationPermissions();
+        }
+    }
+
+    private void requestLocation() {
+        if (ActivityCompat.checkSelfPermission(getContext(), Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED
+                && ActivityCompat.checkSelfPermission(getContext(), Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED)
+            return;
+        LocationManager locationManager = (LocationManager) getActivity().getSystemService(LOCATION_SERVICE);
+        Criteria criteria = new Criteria();
+        criteria.setAccuracy(Criteria.ACCURACY_COARSE);
+
+        String provider = locationManager.getBestProvider(criteria, true);
+        if (provider != null) {
+            final int TIME_TO_UPDATE = 10000;   // 10 секунд
+            final int DISTANCE_TO_UPDATE = 10;  // 10 метров
+
+            locationManager.getLastKnownLocation(provider);
+            locationManager.requestLocationUpdates(provider, TIME_TO_UPDATE, DISTANCE_TO_UPDATE, new LocationListener() {
+                @Override
+                public void onLocationChanged(Location location) {
+                    final double lat = location.getLatitude(); // Широта
+                    final String latitude = String.format(Locale.getDefault(),"%.2f", lat).replace(',', '.');
+
+                    final double lng = location.getLongitude(); // Долгота
+                    final String longitude = String.format(Locale.getDefault(),"%.2f", lng).replace(',', '.');
+
+                    requestRetrofit(latitude, longitude);
+                }
+
+                @Override
+                public void onStatusChanged(String provider, int status, Bundle extras) {
+                }
+
+                @Override
+                public void onProviderEnabled(String provider) {
+                }
+
+                @Override
+                public void onProviderDisabled(String provider) {
+                }
+            });
+        }
+    }
+
+    // Запрашиваем Permission’ы для геолокации
+    private void requestLocationPermissions() {
+        if (!ActivityCompat.shouldShowRequestPermissionRationale(getActivity(), Manifest.permission.CALL_PHONE)) {
+            // Запрашиваем эти два Permission’а у пользователя
+            ActivityCompat.requestPermissions(getActivity(),
+                    new String[]{
+                            Manifest.permission.ACCESS_COARSE_LOCATION,
+                            Manifest.permission.ACCESS_FINE_LOCATION
+                    },
+                    PERMISSION_REQUEST_CODE);
+        }
+    }
+
     private void readFromPreference(SharedPreferences preferences) {
         String city = preferences.getString(CITY, "");
         presenter.setCity(city);
@@ -102,8 +175,27 @@ public class MainActivityFragment extends Fragment implements Constants {
         getWeather = retrofit.create(GetWeather.class);
     }
 
-    private void requestRetrofit(String city, String keyApi) {
-        getWeather.loadWeather(city, keyApi)
+    private void requestRetrofit(String city) {
+        getWeather.loadWeather(city, WEATHER_API_KEY)
+                .enqueue(new Callback<WeatherRequest>() {
+                    @Override
+                    public void onResponse(Call<WeatherRequest> call, Response<WeatherRequest> response) {
+                        if (response.body() != null) {
+                            WeatherRequest wr = response.body();
+                            saveDataToDB(wr);
+                            displayWeather(wr);
+                        }
+                    }
+
+                    @Override
+                    public void onFailure(Call<WeatherRequest> call, Throwable t) {
+                        Log.e(TAG, "onFailure error : " + t.getMessage());
+                    }
+                });
+    }
+
+    private void requestRetrofit(String lat, String lon) {
+        getWeather.loadWeatherLoc(lat, lon, WEATHER_API_KEY)
                 .enqueue(new Callback<WeatherRequest>() {
                     @Override
                     public void onResponse(Call<WeatherRequest> call, Response<WeatherRequest> response) {
@@ -165,7 +257,7 @@ public class MainActivityFragment extends Fragment implements Constants {
     }
 
     private void getWeather() {
-        requestRetrofit(presenter.getCity(), WEATHER_API_KEY);
+        requestRetrofit(presenter.getCity());
     }
 
     private void displayWeather(WeatherRequest weatherRequest){
@@ -220,6 +312,12 @@ public class MainActivityFragment extends Fragment implements Constants {
         }
 
 
+    }
+
+    @Override
+    public void onStart() {
+        super.onStart();
+        requestPermissions();
     }
 
     @Override
