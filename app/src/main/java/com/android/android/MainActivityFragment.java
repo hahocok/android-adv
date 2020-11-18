@@ -1,8 +1,15 @@
 package com.android.android;
 
-import android.net.Uri;
+import android.Manifest;
+import android.content.Context;
+import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
+import android.database.sqlite.SQLiteDatabase;
+import android.location.Criteria;
+import android.location.Location;
+import android.location.LocationListener;
+import android.location.LocationManager;
 import android.os.Bundle;
-import android.os.Handler;
 import android.util.Log;
 import android.view.Gravity;
 import android.view.LayoutInflater;
@@ -12,32 +19,31 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import com.android.android.cards.SocSource;
+import com.android.android.database.DBHelper;
+import com.android.android.database.WeatherTable;
 import com.android.android.model.WeatherRequest;
-import com.google.android.material.snackbar.Snackbar;
+import com.google.android.material.button.MaterialButton;
 import com.google.gson.Gson;
 
-import java.io.BufferedReader;
-import java.io.FileNotFoundException;
-import java.io.InputStreamReader;
-import java.net.MalformedURLException;
-import java.net.URL;
-import java.util.stream.Collectors;
-
-import javax.net.ssl.HttpsURLConnection;
+import java.util.List;
+import java.util.Locale;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.core.app.ActivityCompat;
 import androidx.fragment.app.Fragment;
 import androidx.recyclerview.widget.DividerItemDecoration;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
+import retrofit2.Call;
+import retrofit2.Callback;
+import retrofit2.Response;
+import retrofit2.Retrofit;
+import retrofit2.converter.gson.GsonConverterFactory;
+
+import static android.content.Context.LOCATION_SERVICE;
 
 public class MainActivityFragment extends Fragment implements Constants {
-
-    private static final String TAG = "WEATHER";
-    private static final String WEATHER_URL_START = "https://api.openweathermap.org/data/2.5/weather?q=";
-    private static final String WEATHER_URL_END = ",RU&appid=";
-    private static final String WEATHER_API_KEY = "68c65e3c4c42de33f8a67466a1719a08";
 
     private MainPresenter presenter;
 
@@ -50,6 +56,9 @@ public class MainActivityFragment extends Fragment implements Constants {
     private TextView mainHumidity;
     private TextView mainWindSpeed;
 
+    private GetWeather getWeather;
+    private SQLiteDatabase database;
+
     @Nullable
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
@@ -57,22 +66,20 @@ public class MainActivityFragment extends Fragment implements Constants {
 
         presenter = MainPresenter.getInstance();
 
+        initDB();
+        initRetrofit();
         initViews(view);
 
         mainCityContainer.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                SelectCityFragment selectCityFragment = new SelectCityFragment();
-
-                Bundle bundle = new Bundle();
-                bundle.putString(CITY, mainCity.getText().toString());
-                bundle.putBoolean(HUMIDITY, isVisible(mainHumidityContainer));
-
-                selectCityFragment.setArguments(bundle);
+                presenter.setCity(mainCity.getText().toString());
+                presenter.setHumidity(mainHumidityContainer);
 
                 getFragmentManager().
                         beginTransaction()
-                        .replace(R.id.fragment_container, selectCityFragment)
+                        .replace(R.id.fragment_container, new SelectCityFragment())
+                        .addToBackStack("")
                         .commit();
 
             }
@@ -89,6 +96,141 @@ public class MainActivityFragment extends Fragment implements Constants {
         return view;
     }
 
+    private void requestPermissions() {
+        if (ActivityCompat.checkSelfPermission(getContext(), Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                || ActivityCompat.checkSelfPermission(getContext(), Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+            requestLocation();
+        } else {
+            requestLocationPermissions();
+        }
+    }
+
+    private void requestLocation() {
+        if (ActivityCompat.checkSelfPermission(getContext(), Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED
+                && ActivityCompat.checkSelfPermission(getContext(), Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED)
+            return;
+        LocationManager locationManager = (LocationManager) getActivity().getSystemService(LOCATION_SERVICE);
+        Criteria criteria = new Criteria();
+        criteria.setAccuracy(Criteria.ACCURACY_COARSE);
+
+        String provider = locationManager.getBestProvider(criteria, true);
+        if (provider != null) {
+            final int TIME_TO_UPDATE = 10000;   // 10 секунд
+            final int DISTANCE_TO_UPDATE = 10;  // 10 метров
+
+            locationManager.getLastKnownLocation(provider);
+            locationManager.requestLocationUpdates(provider, TIME_TO_UPDATE, DISTANCE_TO_UPDATE, new LocationListener() {
+                @Override
+                public void onLocationChanged(Location location) {
+                    final double lat = location.getLatitude(); // Широта
+                    final String latitude = String.format(Locale.getDefault(),"%.2f", lat).replace(',', '.');
+
+                    final double lng = location.getLongitude(); // Долгота
+                    final String longitude = String.format(Locale.getDefault(),"%.2f", lng).replace(',', '.');
+
+                    requestRetrofit(latitude, longitude);
+                }
+
+                @Override
+                public void onStatusChanged(String provider, int status, Bundle extras) {
+                }
+
+                @Override
+                public void onProviderEnabled(String provider) {
+                }
+
+                @Override
+                public void onProviderDisabled(String provider) {
+                }
+            });
+        }
+    }
+
+    // Запрашиваем Permission’ы для геолокации
+    private void requestLocationPermissions() {
+        if (!ActivityCompat.shouldShowRequestPermissionRationale(getActivity(), Manifest.permission.CALL_PHONE)) {
+            // Запрашиваем эти два Permission’а у пользователя
+            ActivityCompat.requestPermissions(getActivity(),
+                    new String[]{
+                            Manifest.permission.ACCESS_COARSE_LOCATION,
+                            Manifest.permission.ACCESS_FINE_LOCATION
+                    },
+                    PERMISSION_REQUEST_CODE);
+        }
+    }
+
+    private void readFromPreference(SharedPreferences preferences) {
+        String city = preferences.getString(CITY, "");
+        presenter.setCity(city);
+        mainCity.setText(city);
+        getWeather();
+    }
+
+    private void initRetrofit() {
+        Retrofit retrofit;
+        retrofit = new Retrofit.Builder()
+                .baseUrl("https://api.openweathermap.org")
+                .addConverterFactory(GsonConverterFactory.create())
+                .build();
+        getWeather = retrofit.create(GetWeather.class);
+    }
+
+    private void requestRetrofit(String city) {
+        getWeather.loadWeather(city, WEATHER_API_KEY)
+                .enqueue(new Callback<WeatherRequest>() {
+                    @Override
+                    public void onResponse(Call<WeatherRequest> call, Response<WeatherRequest> response) {
+                        if (response.body() != null) {
+                            WeatherRequest wr = response.body();
+                            saveDataToDB(wr);
+                            displayWeather(wr);
+                        }
+                    }
+
+                    @Override
+                    public void onFailure(Call<WeatherRequest> call, Throwable t) {
+                        Log.e(TAG, "onFailure error : " + t.getMessage());
+                    }
+                });
+    }
+
+    private void requestRetrofit(String lat, String lon) {
+        getWeather.loadWeatherLoc(lat, lon, WEATHER_API_KEY)
+                .enqueue(new Callback<WeatherRequest>() {
+                    @Override
+                    public void onResponse(Call<WeatherRequest> call, Response<WeatherRequest> response) {
+                        if (response.body() != null) {
+                            WeatherRequest wr = response.body();
+                            saveDataToDB(wr);
+                            displayWeather(wr);
+                        }
+                    }
+
+                    @Override
+                    public void onFailure(Call<WeatherRequest> call, Throwable t) {
+                        Log.e(TAG, "onFailure error : " + t.getMessage());
+                    }
+                });
+    }
+
+    private void saveDataToDB(WeatherRequest weatherRequest) {
+        String city = weatherRequest.getName();
+        String data = new Gson().toJson(weatherRequest, WeatherRequest.class);
+        List<String> dataFromDB = WeatherTable.getDataFromCity(city, database);
+
+        if (dataFromDB.isEmpty()) {
+            WeatherTable.addData(city, data, database);
+        } else {
+            WeatherTable.editData(city, data, database);
+        }
+
+        WeatherTable.addData(weatherRequest.getName(), data, database);
+    }
+
+    private void initDB() {
+        database = new DBHelper(getContext()).getWritableDatabase();
+    }
+
     private void initViews(View view) {
         mainCityContainer = view.findViewById(R.id.main_city_container);
         mainHumidityContainer = view.findViewById(R.id.main_humidity_container);
@@ -98,75 +240,34 @@ public class MainActivityFragment extends Fragment implements Constants {
         mainPressure = view.findViewById(R.id.main_pressure);
         mainHumidity = view.findViewById(R.id.main_humidity);
         mainWindSpeed = view.findViewById(R.id.main_wind_speed);
+
+        MaterialButton btn = view.findViewById(R.id.btn_sensors);
+        btn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                getFragmentManager().
+                        beginTransaction()
+                        .replace(R.id.fragment_container, new SensorsFragment())
+                        .addToBackStack("")
+                        .commit();
+            }
+        });
+
+        readFromPreference(getActivity().getPreferences(Context.MODE_PRIVATE));
     }
 
     private void getWeather() {
-        final URL uri = getUrl();
-        final Handler handler = new Handler(); // Запоминаем основной поток
-        new Thread(new Runnable() {
-            public void run() {
-                HttpsURLConnection urlConnection = null;
-                try {
-                    urlConnection = (HttpsURLConnection) uri.openConnection();
-                    urlConnection.setRequestMethod("GET"); // установка метода получения данных -GET
-                    urlConnection.setReadTimeout(10000); // установка таймаута - 10 000 миллисекунд
-                    BufferedReader in = new BufferedReader(new InputStreamReader(urlConnection.getInputStream())); // читаем  данные в поток
-                    String result = getLines(in);
-                    // преобразование данных запроса в модель
-                    Gson gson = new Gson();
-                    final WeatherRequest weatherRequest = gson.fromJson(result, WeatherRequest.class);
-                    // Возвращаемся к основному потоку
-                    handler.post(new Runnable() {
-                        @Override
-                        public void run() {
-                            displayWeather(weatherRequest);
-                        }
-                    });
-                } catch (FileNotFoundException e) {
-                    Snackbar.make(getView(), getResources().getString(R.string.error_city_not_found), Snackbar.LENGTH_LONG).show();
-                } catch (Exception e) {
-                    Log.e(TAG, getResources().getString(R.string.error_fail_connection), e);
-                    e.printStackTrace();
-                } finally {
-                    if (null != urlConnection) {
-                        urlConnection.disconnect();
-                    }
-                }
-            }
-        }).start();
-    }
-
-    private URL getUrl() {
-        String city;
-        if (getArguments() != null) {
-            city = getArguments().getString(CITY);
-        } else {
-            city = "";
-        }
-        String sb = WEATHER_URL_START +
-                city +
-                WEATHER_URL_END;
-
-        URL uri = null;
-        try {
-            uri = new URL(sb + WEATHER_API_KEY);
-        } catch (MalformedURLException e) {
-            e.printStackTrace();
-        }
-
-        return uri;
-    }
-
-    private String getLines(BufferedReader in) {
-        return in.lines().collect(Collectors.joining("\n"));
+        requestRetrofit(presenter.getCity());
     }
 
     private void displayWeather(WeatherRequest weatherRequest){
-        mainCity.setText(weatherRequest.getName());
-        mainTemperature.setText(String.format("%f2", weatherRequest.getMain().getTemp()));
-        mainPressure.setText(String.format("%d", weatherRequest.getMain().getPressure()));
-        mainHumidity.setText(String.format("%d", weatherRequest.getMain().getHumidity()));
-        mainWindSpeed.setText(String.format("%d", weatherRequest.getWind().getSpeed()));
+        if (weatherRequest != null) {
+            mainCity.setText(weatherRequest.getName());
+            mainTemperature.setText(String.format("%f2", weatherRequest.getMain().getTemp()));
+            mainPressure.setText(String.format("%d", weatherRequest.getMain().getPressure()));
+            mainHumidity.setText(String.format("%d", weatherRequest.getMain().getHumidity()));
+            mainWindSpeed.setText(String.format("%f2", weatherRequest.getWind().getSpeed()));
+        }
     }
 
     private void initRecyclerView(View view, SocSource data){
@@ -191,45 +292,32 @@ public class MainActivityFragment extends Fragment implements Constants {
 
     }
 
+    private void readIntent() {
+        String city = presenter.getCity();
+        boolean isHumidity = presenter.isHumidity();
 
-    private boolean isVisible(View view) {
-        int isVisible = view.getVisibility();
-        if (isVisible == View.VISIBLE) {
-            return true;
+        if (city != null && city.equals(getResources().getString(R.string.city))) {
+            mainCity.setHint(getResources().getString(R.string.enter_city));
         } else {
-            return false;
+            mainCity.setText(city);
+            mainCity.setGravity(Gravity.CENTER_HORIZONTAL);
         }
+
+        mainTemperature.setText(presenter.getTemperature());
+
+        if (isHumidity) {
+            mainHumidityContainer.setVisibility(View.VISIBLE);
+        } else {
+            mainHumidityContainer.setVisibility(View.GONE);
+        }
+
+
     }
 
-    private void readIntent() {
-        Bundle args = getArguments();
-        String city = null;
-        boolean isCloudiness = false;
-        boolean isHumidity = false;
-        if (args != null) {
-            city = args.getString(CITY);
-            isCloudiness = args.getBoolean(CLOUDINESS, false);
-            isHumidity = args.getBoolean(HUMIDITY, false);
-
-            if (city != null && city.equals(getResources().getString(R.string.city))) {
-                mainCity.setHint(getResources().getString(R.string.enter_city));
-            } else {
-                mainCity.setText(city);
-                mainCity.setGravity(Gravity.CENTER_HORIZONTAL);
-            }
-
-            mainTemperature.setText(presenter.getTemperature());
-
-            if (isHumidity) {
-                mainHumidityContainer.setVisibility(View.VISIBLE);
-            } else {
-                mainHumidityContainer.setVisibility(View.GONE);
-            }
-        } else {
-            mainHumidityContainer.setVisibility(View.VISIBLE);
-        }
-
-
+    @Override
+    public void onStart() {
+        super.onStart();
+        requestPermissions();
     }
 
     @Override
@@ -244,6 +332,6 @@ public class MainActivityFragment extends Fragment implements Constants {
         super.onSaveInstanceState(outState);
         presenter.setTemperature(mainTemperature.getText().toString());
         Toast.makeText(getContext(), "onSaveInstanceState()", Toast.LENGTH_SHORT).show();
-        Log.d(LOG_TAG, "onSaveInstanceState()");
+        Log.d(TAG, "onSaveInstanceState()");
     }
 }
